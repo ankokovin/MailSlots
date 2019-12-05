@@ -62,28 +62,36 @@ namespace MailSlots
                         DIS.Import.FlushFileBuffers(ClientHandleMailSlot);      // "принудительная" запись данных, расположенные в буфере операционной системы, в файл мэйлслота
                         DIS.Import.ReadFile(ClientHandleMailSlot, buff, 1024, ref realBytesReaded, 0);      // считываем последовательность байтов из мэйлслота в буфер buff
                         msg = Encoding.Unicode.GetString(buff);                 // выполняем преобразование байтов в последовательность символов
-                        
+
                         if (msg.Contains("<<"))
                         {
                             int idx = msg.IndexOf(" <<");
                             int lastidx = msg.IndexOf('\0');
                             string dname = msg.Substring(0, idx);
-                            string nickname = msg.Substring(idx + 4, lastidx-idx-4);
+                            string nickname = msg.Substring(idx + 4, lastidx - idx - 4);
                             nicknames[dname] = nickname;
                         }
                         else
                         {
-                            int idx = msg.IndexOf(" >>");
-                            string dname = msg.Substring(0, idx);
-                            msg = msg.Substring(idx);
-                            msg = nicknames[dname] + msg;
-                            send(msg);
-                            rtbMessages.Invoke((MethodInvoker)delegate
+                            if (msg.Contains(" >>"))
                             {
-                                if (msg != "")
-                                    rtbMessages.Text += "\n >> " + msg + " \n";     // выводим полученное сообщение на форму
-                            });
+
+                                int idx = msg.IndexOf(" >>");
+                                string dname = msg.Substring(0, idx);
+                                msg = msg.Substring(idx);
+                                msg = nicknames[dname] + msg;
+                                send(msg);
+                                rtbMessages.Invoke((MethodInvoker)delegate
+                                {
+                                    if (msg != "")
+                                        rtbMessages.Text += "\n >> " + msg + " \n";     // выводим полученное сообщение на форму
+                                });
                             }
+                            else
+                            {
+                                send_self(msg);
+                            }
+                        }
                         Thread.Sleep(500);                                      // приостанавливаем работу потока перед тем, как приcтупить к обслуживанию очередного клиента
                     }
             }
@@ -106,6 +114,20 @@ namespace MailSlots
                 DIS.Import.WriteFile(ClientReturnHandleMailSlot, buff, Convert.ToUInt32(buff.Length), ref BytesWritten, 0);     // выполняем запись последовательности байт в мэйлслот
             }
             DIS.Import.CloseHandle(ClientReturnHandleMailSlot);
+        }
+
+        private void send_self(string host)
+        {
+            int idx = host.IndexOf('\0');
+            if (idx != -1)
+                host = host.Substring(0, idx);
+            int SingleClientMailSlotHandle = DIS.Import.CreateFile("\\\\" + host + "\\mailslot\\ClientMailslot", DIS.Types.EFileAccess.GenericWrite, DIS.Types.EFileShare.Read, 0, DIS.Types.ECreationDisposition.OpenExisting, 0, 0);
+            if (SingleClientMailSlotHandle != -1)
+            {
+                uint BytesWritten = 0;  // количество реально записанных в мэйлслот байт
+                byte[] buff = Encoding.Unicode.GetBytes(MailSlotName);    // выполняем преобразование сообщения (вместе с идентификатором машины) в последовательность байт
+                DIS.Import.WriteFile(SingleClientMailSlotHandle, buff, Convert.ToUInt32(buff.Length), ref BytesWritten, 0);     // выполняем запись последовательности байт в мэйлслот
+            }
         }
 
         private void frmMain_FormClosing(object sender, FormClosingEventArgs e)
